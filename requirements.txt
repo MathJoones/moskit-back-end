@@ -1,0 +1,43 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.19
+
+# Banco de dados
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# Validacao
+pydantic==2.10.3
+pydantic-settings==2.6.1
+pydantic[email]==2.10.3
+
+# Autenticacao
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+cryptography==43.0.3
+
+# Rate limiting
+slowapi==0.1.9
+
+# HTTP client (connectors)
+httpx==0.28.1
+tenacity==9.0.0
+
+# Processamento de arquivos
+pandas==2.2.3
+openpyxl==3.1.5
+chardet==5.2.0
+
+# Logging estruturado
+structlog==24.4.0
+
+# Testes
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+factory-boy==3.3.1
+
+# Dev
+python-dotenv==1.0.1
