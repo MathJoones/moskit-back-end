@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.middleware.auth import get_current_user
 from app.models.user import User
 from app.schemas.export import ExportCreate, ExportResponse, ExportListResponse
@@ -16,6 +16,15 @@ router = APIRouter()
 
 def get_service(db: Session = Depends(get_db)) -> ExportService:
     return ExportService(db)
+
+
+async def _run_export_background(export_id: uuid.UUID) -> None:
+    """Cria session própria para o background task — a session do request já foi fechada."""
+    db = SessionLocal()
+    try:
+        await ExportService(db).process(export_id)
+    finally:
+        db.close()
 
 
 @router.get("", response_model=PaginatedResponse[ExportListResponse])
@@ -36,7 +45,7 @@ async def create_export(
     service: ExportService = Depends(get_service),
 ):
     export = service.create(payload, current_user.id)
-    background_tasks.add_task(service.process, export.id)
+    background_tasks.add_task(_run_export_background, export.id)
     return export
 
 

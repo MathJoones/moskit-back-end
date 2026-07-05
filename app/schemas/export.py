@@ -45,6 +45,7 @@ class ExportListResponse(BaseModel):
     status: ExportStatus
     output_format: ExportFormat
     total_records: int | None
+    error_message: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

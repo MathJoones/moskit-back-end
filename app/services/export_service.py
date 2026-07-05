@@ -6,10 +6,12 @@ Fluxo:
   2. process() → chamado via BackgroundTasks, atualiza status no PG
   3. get_file_path() → retorna caminho do arquivo gerado
 """
-import io
+import csv
+import json
 import os
 import uuid
 from datetime import datetime, UTC
+from pathlib import Path
 
 import httpx
 import pandas as pd
@@ -24,6 +26,107 @@ from app.repositories.export_repository import ExportRepository
 from app.repositories.connection_repository import ConnectionRepository
 from app.schemas.export import ExportCreate, ExportResponse, ExportListResponse
 from app.core.security import decrypt_secret
+
+
+# ── Normalizers por entidade ───────────────────────────────
+
+def _fmt_date(iso: str | None) -> str:
+    """ISO 8601 → DD/MM/YYYY HH:MM"""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return iso or ""
+
+
+def _extract_list_field(items: list, field: str, sep: str = " | ") -> str:
+    """Extrai campo de lista de dicts e junta com separador."""
+    if not isinstance(items, list):
+        return ""
+    return sep.join(str(i.get(field, "")) for i in items if i.get(field))
+
+
+def normalize_contact(r: dict) -> dict:
+    phones = r.get("phones") or []
+    emails = r.get("emails") or []
+    employers = r.get("employers") or []
+
+    return {
+        "ID": r.get("id", ""),
+        "Nome": r.get("name", ""),
+        "Email": _extract_list_field(emails, "address"),
+        "Telefone": _extract_list_field(phones, "number"),
+        "Empresa (ID)": " | ".join(
+            str(e.get("company", {}).get("id", "")) for e in employers if e.get("company")
+        ),
+        "Responsável (ID)": (r.get("responsible") or {}).get("id", ""),
+        "Observações": r.get("notes", ""),
+        "Origem": r.get("origin", ""),
+        "Data Criação": _fmt_date(r.get("dateCreated")),
+    }
+
+
+def normalize_deal(r: dict) -> dict:
+    contacts = r.get("contacts") or []
+    companies = r.get("companies") or []
+    stage = r.get("stage") or {}
+
+    return {
+        "ID": r.get("id", ""),
+        "Nome": r.get("name", ""),
+        "Valor": r.get("price", ""),
+        "Status": r.get("status", ""),
+        "Etapa (ID)": stage.get("id", ""),
+        "Contatos (IDs)": _extract_list_field(contacts, "id"),
+        "Empresas (IDs)": _extract_list_field(companies, "id"),
+        "Responsável (ID)": (r.get("responsible") or {}).get("id", ""),
+        "Origem": r.get("origin", ""),
+        "Data Criação": _fmt_date(r.get("dateCreated")),
+        "Previsão Fechamento": _fmt_date(r.get("previsionCloseDate")),
+        "Data Fechamento": _fmt_date(r.get("closeDate")),
+    }
+
+
+def normalize_company(r: dict) -> dict:
+    phones = r.get("phones") or []
+    emails = r.get("emails") or []
+
+    return {
+        "ID": r.get("id", ""),
+        "Nome": r.get("name", ""),
+        "Email": _extract_list_field(emails, "address"),
+        "Telefone": _extract_list_field(phones, "number"),
+        "Site": r.get("site", ""),
+        "CNPJ": r.get("cnpj", ""),
+        "Responsável (ID)": (r.get("responsible") or {}).get("id", ""),
+        "Observações": r.get("notes", ""),
+        "Data Criação": _fmt_date(r.get("dateCreated")),
+    }
+
+
+def normalize_activity(r: dict) -> dict:
+    return {
+        "ID": r.get("id", ""),
+        "Título": r.get("title", ""),
+        "Tipo": r.get("type", ""),
+        "Status": r.get("status", ""),
+        "Responsável (ID)": (r.get("responsible") or {}).get("id", ""),
+        "Negócio (ID)": (r.get("deal") or {}).get("id", ""),
+        "Contato (ID)": (r.get("contact") or {}).get("id", ""),
+        "Data": _fmt_date(r.get("date")),
+        "Data Criação": _fmt_date(r.get("dateCreated")),
+        "Observações": r.get("notes", ""),
+    }
+
+
+NORMALIZERS = {
+    "contact":  normalize_contact,
+    "deal":     normalize_deal,
+    "company":  normalize_company,
+    "activity": normalize_activity,
+}
 
 
 class ExportService:
@@ -104,6 +207,7 @@ class ExportService:
             columns = (export.columns_config or {}).get("fields")
             file_path, file_name = self._generate_file(
                 records=records,
+                entity_type=export.entity_type,
                 output_format=export.output_format,
                 export_id=export_id,
                 columns=columns,
@@ -149,59 +253,107 @@ class ExportService:
     ) -> list[dict]:
         endpoints = {
             "deal":     "/v2/deals",
-            "contact":  "/v2/people",
+            "contact":  "/v2/contacts",
             "company":  "/v2/companies",
             "activity": "/v2/activities",
         }
         endpoint = endpoints.get(entity_type, f"/v2/{entity_type}s")
 
         records: list[dict] = []
-        page = 1
+        start = 0
+        page_size = 100  # Moskit retorna no máx ~10 por chamada mas aceita start como offset
 
         async with httpx.AsyncClient(timeout=settings.MOSKIT_API_TIMEOUT) as client:
             while True:
-                params: dict = {"page": page, "limit": 100, **filter_config}
-                resp = await client.get(
-                    f"{base_url}{endpoint}",
-                    headers={"apikey": api_key, "Content-Type": "application/json"},
-                    params=params,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+                params: dict = {"start": start, **filter_config}
+                try:
+                    resp = await client.get(
+                        f"{base_url}{endpoint}",
+                        headers={"apikey": api_key, "Content-Type": "application/json"},
+                        params=params,
+                    )
+                except httpx.ConnectError:
+                    raise ValueError(
+                        f"DNS/conexao falhou para '{base_url}'. "
+                        "Verifique a Base URL da conexao no cadastro."
+                    )
+                except httpx.TimeoutException:
+                    raise ValueError(f"Timeout ao conectar em '{base_url}'")
+                if resp.status_code >= 400:
+                    raise ValueError(f"Moskit API HTTP {resp.status_code}: {resp.text[:300]}")
 
-                # Moskit retorna lista direta ou objeto com items
+                data = resp.json()
                 batch = data if isinstance(data, list) else data.get("items", data.get("data", []))
                 if not batch:
                     break
                 records.extend(batch)
-                if len(batch) < 100:
+
+                # Moskit informa total real no header
+                total = int(resp.headers.get("x-moskit-listing-total", 0))
+                if total and len(records) >= total:
                     break
-                page += 1
+
+                # Para quando retorna menos que o esperado (última página)
+                batch_size = int(resp.headers.get("x-moskit-listing-quantity", len(batch)))
+                start += batch_size
+                if batch_size == 0:
+                    break
 
         return records
 
     def _generate_file(
         self,
         records: list[dict],
+        entity_type: str,
         output_format: str,
         export_id: uuid.UUID,
         columns: list[str] | None = None,
     ) -> tuple[str, str]:
-        os.makedirs(settings.STORAGE_LOCAL_PATH, exist_ok=True)
-        df = pd.json_normalize(records)
-
-        if columns:
-            existing = [c for c in columns if c in df.columns]
-            df = df[existing] if existing else df
+        storage_dir = Path(settings.STORAGE_LOCAL_PATH).resolve()
+        storage_dir.mkdir(parents=True, exist_ok=True)
 
         file_name = f"export_{export_id}.{output_format}"
-        file_path = os.path.join(settings.STORAGE_LOCAL_PATH, file_name)
+        file_path = storage_dir / file_name
+
+        # S3 — path traversal guard
+        if not str(file_path).startswith(str(storage_dir)):
+            raise ValueError("Path traversal detectado: caminho fora do diretório de storage")
+
+        normalizer = NORMALIZERS.get(entity_type)
+        normalized = [normalizer(r) for r in records] if normalizer else records
 
         if output_format == "csv":
-            df.to_csv(file_path, index=False, encoding="utf-8-sig")
-        elif output_format == "xlsx":
-            df.to_excel(file_path, index=False, engine="openpyxl")
-        elif output_format == "json":
-            df.to_json(file_path, orient="records", force_ascii=False, indent=2)
+            if not normalized:
+                fieldnames = columns or []
+            else:
+                fieldnames = list(columns) if columns else list(normalized[0].keys())
+            with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(normalized)
 
-        return file_path, file_name
+        elif output_format == "json":
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(normalized, f, ensure_ascii=False, indent=2, default=str)
+
+        elif output_format == "xlsx":
+            df = pd.DataFrame(normalized)
+            if columns:
+                existing = [c for c in columns if c in df.columns]
+                df = df[existing] if existing else df
+            # Formatar colunas de data como texto limpo (já vieram formatadas pelo normalizer)
+            df.to_excel(str(file_path), index=False, engine="openpyxl")
+
+        return str(file_path), file_name
+
+    @staticmethod
+    def _flatten(record: dict, parent_key: str = "", sep: str = ".") -> dict:
+        """Flatten aninhado — usado apenas para entidades sem normalizer."""
+        items: list = []
+        for k, v in record.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(ExportService._flatten(v, new_key, sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)

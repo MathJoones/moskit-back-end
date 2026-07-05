@@ -43,10 +43,10 @@ class Settings(BaseSettings):
 
     # Storage
     STORAGE_TYPE: Literal["local", "s3"] = "local"
-    STORAGE_LOCAL_PATH: str = "exports"  # relativo ao CWD; sobrescreva no .env
+    STORAGE_LOCAL_PATH: str = "exports" 
 
     # Moskit API
-    MOSKIT_API_BASE_URL: str = "https://api.moskit.com.br"
+    MOSKIT_API_BASE_URL: str = "https://api.moskitcrm.com"
     MOSKIT_API_TIMEOUT: int = 30
 
     # Seguranca

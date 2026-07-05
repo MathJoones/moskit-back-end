@@ -28,7 +28,7 @@ class MoskitConnector(BaseConnector):
         }
 
     async def test(self) -> ConnectionTestResponse:
-        base_url = self.connection.base_url or "https://api.moskit.com.br"
+        base_url = self.connection.base_url or "https://api.moskitcrm.com"
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -41,21 +41,28 @@ class MoskitConnector(BaseConnector):
             ok = resp.status_code < 400
             return ConnectionTestResponse(
                 ok=ok,
-                message="Conexao bem-sucedida" if ok else f"HTTP {resp.status_code}",
+                message="Conexao bem-sucedida" if ok else f"HTTP {resp.status_code}: verifique a API Key",
                 latency_ms=elapsed_ms,
             )
+        except httpx.ConnectError:
+            return ConnectionTestResponse(
+                ok=False,
+                message=f"DNS/conexao falhou para '{base_url}'. Verifique a Base URL da conexao.",
+            )
+        except httpx.TimeoutException:
+            return ConnectionTestResponse(ok=False, message=f"Timeout ao conectar em '{base_url}'")
         except Exception as e:
             return ConnectionTestResponse(ok=False, message=str(e))
 
     async def list_deals(self, params: dict | None = None) -> dict:
-        base_url = self.connection.base_url or "https://api.moskit.com.br"
+        base_url = self.connection.base_url or "https://api.moskitcrm.com"
         response = await self._request(
             "GET", f"{base_url}/v2/deals", headers=self._headers(), params=params or {}
         )
         return response.json()
 
     async def create_deal(self, payload: dict) -> dict:
-        base_url = self.connection.base_url or "https://api.moskit.com.br"
+        base_url = self.connection.base_url or "https://api.moskitcrm.com"
         response = await self._request(
             "POST", f"{base_url}/v2/deals", headers=self._headers(), json=payload
         )
