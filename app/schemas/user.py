@@ -33,6 +33,20 @@ class UserUpdate(BaseModel):
     role: str | None = None
     status: str | None = None
 
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("admin", "operator", "viewer"):
+            raise ValueError("Role invalido. Validos: admin, operator, viewer")
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("active", "inactive", "suspended"):
+            raise ValueError("Status invalido. Validos: active, inactive, suspended")
+        return v
+
 
 class UserResponse(BaseModel):
     model_config = {"from_attributes": True}

@@ -14,7 +14,7 @@ class ConnectionRepository(BaseRepository[ApiConnection]):
     def get_all_active(self, skip: int = 0, limit: int = 20) -> tuple[list[ApiConnection], int]:
         query = (
             self.db.query(ApiConnection)
-            .filter(ApiConnection.deleted_at.is_(None))
+            .filter(ApiConnection.deleted_at.is_(None), ApiConnection.is_active == True)
         )
         total = query.count()
         items = query.offset(skip).limit(limit).all()

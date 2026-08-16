@@ -1,7 +1,4 @@
-"""
-Moskit CRM Export System — FastAPI Entry Point
-"""
-
+# Ponto de entrada da aplicacao FastAPI
 import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
@@ -40,7 +37,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Middlewares ────────────────────────────────────────────
+# Middlewares
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -53,7 +50,7 @@ app.add_middleware(RequestIdMiddleware)
 configure_rate_limiter(app)
 
 
-# ── Exception Handlers ─────────────────────────────────────
+# Handlers de excecao globais
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     logger.warning(
@@ -107,7 +104,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
-# ── Routers ────────────────────────────────────────────────
+# Routers
 API_PREFIX = "/api/v1"
 
 app.include_router(auth_router,       prefix=f"{API_PREFIX}/auth",           tags=["Auth"])
@@ -116,7 +113,6 @@ app.include_router(connection_router, prefix=f"{API_PREFIX}/connections", tags=[
 app.include_router(export_router,     prefix=f"{API_PREFIX}/exports",     tags=["Exports"])
 
 
-# ── Health Check ───────────────────────────────────────────
 @app.get("/health", tags=["Health"], include_in_schema=False)
 async def health_check():
     return {

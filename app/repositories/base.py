@@ -33,6 +33,7 @@ class BaseRepository(Generic[ModelType]):
         self.db.refresh(obj)
         return obj
 
-    def delete(self, obj: ModelType) -> None:
+    def hard_delete(self, obj: ModelType) -> None:
+        """Remove permanentemente. Para modelos com SoftDeleteMixin use soft_delete() no repository específico."""
         self.db.delete(obj)
         self.db.commit()

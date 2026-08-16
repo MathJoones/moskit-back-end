@@ -9,14 +9,14 @@ engine = create_engine(
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_timeout=settings.DATABASE_POOL_TIMEOUT,
-    pool_pre_ping=True,  # reconecta se conexao morreu
+    pool_pre_ping=True,  # reconecta automaticamente se conexao morreu
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """FastAPI dependency — injeta sessao do banco e garante fechamento."""
+    # dependencia FastAPI — injeta sessao e garante fechamento ao final do request
     db = SessionLocal()
     try:
         yield db

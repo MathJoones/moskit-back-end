@@ -1,12 +1,10 @@
-"""
-MoskitConnector — wrapper da API Moskit CRM.
-Documentacao: https://moskit.com.br/api
-"""
+# Wrapper da API Moskit CRM
 import time
 
 import httpx
 
 from app.connectors.base import BaseConnector
+from app.core.config import settings
 from app.core.security import decrypt_secret
 from app.schemas.api_connection import ConnectionTestResponse
 
@@ -28,7 +26,7 @@ class MoskitConnector(BaseConnector):
         }
 
     async def test(self) -> ConnectionTestResponse:
-        base_url = self.connection.base_url or "https://api.moskitcrm.com"
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -51,18 +49,18 @@ class MoskitConnector(BaseConnector):
             )
         except httpx.TimeoutException:
             return ConnectionTestResponse(ok=False, message=f"Timeout ao conectar em '{base_url}'")
-        except Exception as e:
-            return ConnectionTestResponse(ok=False, message=str(e))
+        except Exception:
+            return ConnectionTestResponse(ok=False, message="Erro inesperado ao testar conexao")
 
     async def list_deals(self, params: dict | None = None) -> dict:
-        base_url = self.connection.base_url or "https://api.moskitcrm.com"
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
         response = await self._request(
             "GET", f"{base_url}/v2/deals", headers=self._headers(), params=params or {}
         )
         return response.json()
 
     async def create_deal(self, payload: dict) -> dict:
-        base_url = self.connection.base_url or "https://api.moskitcrm.com"
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
         response = await self._request(
             "POST", f"{base_url}/v2/deals", headers=self._headers(), json=payload
         )

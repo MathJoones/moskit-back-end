@@ -1,9 +1,21 @@
+import ipaddress
 import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+
+
+def _sanitize_ip(ip: str | None) -> str | None:
+    """Valida IP antes de persistir em coluna INET. Retorna None se inválido."""
+    if not ip:
+        return None
+    try:
+        ipaddress.ip_address(ip)
+        return ip
+    except ValueError:
+        return None
 
 
 class AuditLogRepository:
@@ -29,7 +41,7 @@ class AuditLogRepository:
             entity_id=entity_id,
             old_value=old_value,
             new_value=new_value,
-            ip_address=ip_address,
+            ip_address=_sanitize_ip(ip_address),
             user_agent=user_agent,
             extra_metadata=extra_metadata,
             created_at=datetime.now(timezone.utc),

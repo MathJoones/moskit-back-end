@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.models.user import User, UserSession
@@ -10,6 +11,15 @@ from app.repositories.base import BaseRepository
 class UserRepository(BaseRepository[User]):
     def __init__(self, db: Session):
         super().__init__(User, db)
+
+    def get_all_active(self, skip: int = 0, limit: int = 20) -> list[User]:
+        return (
+            self.db.query(User)
+            .filter(User.deleted_at.is_(None))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
     def get_by_email(self, email: str) -> User | None:
         return (
@@ -30,8 +40,14 @@ class UserRepository(BaseRepository[User]):
         return self.update(user)
 
     def increment_failed_attempts(self, user: User) -> User:
-        user.failed_attempts += 1
-        return self.update(user)
+        self.db.execute(
+            sa_update(User)
+            .where(User.id == user.id)
+            .values(failed_attempts=User.failed_attempts + 1)
+        )
+        self.db.commit()
+        self.db.refresh(user)
+        return user
 
     def reset_failed_attempts(self, user: User) -> User:
         user.failed_attempts = 0

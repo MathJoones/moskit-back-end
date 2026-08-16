@@ -1,11 +1,4 @@
-"""
-ExportService — orquestra criação, processamento e download de exports.
-
-Fluxo:
-  1. create() → persiste job no PG com status=pending
-  2. process() → chamado via BackgroundTasks, atualiza status no PG
-  3. get_file_path() → retorna caminho do arquivo gerado
-"""
+# Orquestra criacao, processamento (background) e download de exports
 import csv
 import json
 import os
@@ -28,8 +21,7 @@ from app.schemas.export import ExportCreate, ExportResponse, ExportListResponse
 from app.core.security import decrypt_secret
 
 
-# ── Normalizers por entidade ───────────────────────────────
-
+# Normalizadores por tipo de entidade Moskit
 def _fmt_date(iso: str | None) -> str:
     """ISO 8601 → DD/MM/YYYY HH:MM"""
     if not iso:
@@ -128,6 +120,15 @@ NORMALIZERS = {
     "activity": normalize_activity,
 }
 
+ALLOWED_FILTER_PARAMS = {
+    "deal":     {"status", "responsible_id", "stage_id", "origin"},
+    "contact":  {"responsible_id", "origin"},
+    "company":  {"responsible_id", "origin"},
+    "activity": {"responsible_id", "status", "type"},
+}
+
+MAX_EXPORT_RECORDS = 100_000
+
 
 class ExportService:
     def __init__(self, db: Session):
@@ -177,12 +178,16 @@ class ExportService:
             raise AppException(status_code=404, error_code="EXPORT_NOT_FOUND", detail="Export não encontrado")
         if export.status != "completed" or not export.output_file_path:
             raise AppException(status_code=409, error_code="EXPORT_NOT_READY", detail="Export ainda não concluído")
-        if not os.path.exists(export.output_file_path):
+        storage_dir = Path(settings.STORAGE_LOCAL_PATH).resolve()
+        file_path = Path(export.output_file_path).resolve()
+        if not str(file_path).startswith(str(storage_dir)):
+            raise AppException(status_code=403, error_code="FORBIDDEN", detail="Acesso negado")
+        if not file_path.exists():
             raise AppException(status_code=410, error_code="FILE_EXPIRED", detail="Arquivo expirado ou removido")
-        return export.output_file_path
+        return str(file_path)
 
     async def process(self, export_id: uuid.UUID) -> None:
-        """Executa o export assincronamente (chamado via BackgroundTasks)."""
+        # chamado via BackgroundTasks — roda apos o request ser fechado
         export = self.repo.get_by_id(export_id)
         if not export:
             return
@@ -263,9 +268,14 @@ class ExportService:
         start = 0
         page_size = 100  # Moskit retorna no máx ~10 por chamada mas aceita start como offset
 
+        allowed = ALLOWED_FILTER_PARAMS.get(entity_type, set())
+        safe_filters = {k: v for k, v in filter_config.items() if k in allowed}
+
         async with httpx.AsyncClient(timeout=settings.MOSKIT_API_TIMEOUT) as client:
             while True:
-                params: dict = {"start": start, **filter_config}
+                if len(records) >= MAX_EXPORT_RECORDS:
+                    break
+                params: dict = {"start": start, **safe_filters}
                 try:
                     resp = await client.get(
                         f"{base_url}{endpoint}",
@@ -315,8 +325,8 @@ class ExportService:
         file_name = f"export_{export_id}.{output_format}"
         file_path = storage_dir / file_name
 
-        # S3 — path traversal guard
-        if not str(file_path).startswith(str(storage_dir)):
+        # path traversal guard — resolve para expandir symlinks antes de comparar
+        if not str(file_path.resolve()).startswith(str(storage_dir)):
             raise ValueError("Path traversal detectado: caminho fora do diretório de storage")
 
         normalizer = NORMALIZERS.get(entity_type)
@@ -341,8 +351,7 @@ class ExportService:
             if columns:
                 existing = [c for c in columns if c in df.columns]
                 df = df[existing] if existing else df
-            # Formatar colunas de data como texto limpo (já vieram formatadas pelo normalizer)
-            df.to_excel(str(file_path), index=False, engine="openpyxl")
+            df.to_excel(str(file_path), index=False, engine="openpyxl")  # datas ja formatadas pelo normalizer
 
         return str(file_path), file_name
 

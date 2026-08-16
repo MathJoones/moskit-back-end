@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -22,7 +22,7 @@ async def list_users(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    return UserRepository(db).get_all(skip=skip, limit=limit)
+    return UserRepository(db).get_all_active(skip=skip, limit=limit)
 
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -124,3 +124,4 @@ async def delete_user(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

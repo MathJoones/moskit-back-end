@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -56,7 +56,7 @@ async def create_connection(
         name=data.name,
         description=data.description,
         connection_type=data.connection_type,
-        base_url=data.base_url,
+        base_url=str(data.base_url) if data.base_url else None,
         extra_config=data.extra_config,
         created_by=current_user.id,
         api_key_enc=encrypt_secret(data.api_key) if data.api_key else None,
@@ -97,6 +97,8 @@ async def update_connection(
             conn.api_key_enc = encrypt_secret(value) if value else None
         elif field == "api_secret":
             conn.api_secret_enc = encrypt_secret(value) if value else None
+        elif field == "base_url":
+            conn.base_url = str(value) if value else None
         else:
             setattr(conn, field, value)
     repo.update(conn)
@@ -137,6 +139,7 @@ async def delete_connection(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{conn_id}/test", response_model=ConnectionTestResponse)

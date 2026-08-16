@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, AnyHttpUrl
 
 
 VALID_CONNECTION_TYPES = {"moskit", "external_api", "csv", "xlsx", "database"}
@@ -10,7 +10,7 @@ class ConnectionCreate(BaseModel):
     name: str
     description: str | None = None
     connection_type: str
-    base_url: str | None = None
+    base_url: AnyHttpUrl | None = None
     api_key: str | None = None       # plaintext — criptografado antes de persistir
     api_secret: str | None = None    # plaintext — criptografado antes de persistir
     extra_config: dict | None = None
@@ -26,7 +26,7 @@ class ConnectionCreate(BaseModel):
 class ConnectionUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    base_url: str | None = None
+    base_url: AnyHttpUrl | None = None
     api_key: str | None = None
     api_secret: str | None = None
     extra_config: dict | None = None

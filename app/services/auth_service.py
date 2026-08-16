@@ -1,3 +1,4 @@
+import ipaddress
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,17 @@ from app.models.user import User, UserSession
 from app.repositories.audit_repository import AuditLogRepository
 from app.repositories.user_repository import UserRepository, SessionRepository
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+
+
+def _sanitize_ip(ip: str | None) -> str | None:
+    """Valida IP antes de persistir em coluna INET. Retorna None se inválido."""
+    if not ip:
+        return None
+    try:
+        ipaddress.ip_address(ip)
+        return ip
+    except ValueError:
+        return None
 
 
 class AuthService:
@@ -40,7 +52,7 @@ class AuthService:
             entity_type="user",
             entity_id=str(user.id),
             new_value={"email": user.email, "full_name": user.full_name, "role": user.role},
-            ip_address=ip,
+            ip_address=_sanitize_ip(ip),
             user_agent=user_agent,
         )
 
@@ -50,7 +62,7 @@ class AuthService:
         session = UserSession(
             user_id=user.id,
             refresh_token=refresh_token,
-            ip_address=ip,
+            ip_address=_sanitize_ip(ip),
             user_agent=user_agent,
             expires_at=datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),
             created_at=datetime.now(timezone.utc),
@@ -90,7 +102,7 @@ class AuthService:
             user_id=user.id,
             entity_type="user",
             entity_id=str(user.id),
-            ip_address=ip,
+            ip_address=_sanitize_ip(ip),
             user_agent=user_agent,
         )
 
@@ -100,7 +112,7 @@ class AuthService:
         session = UserSession(
             user_id=user.id,
             refresh_token=refresh_token,
-            ip_address=ip,
+            ip_address=_sanitize_ip(ip),
             user_agent=user_agent,
             expires_at=datetime.now(timezone.utc)
             + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),

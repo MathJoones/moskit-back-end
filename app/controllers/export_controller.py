@@ -19,10 +19,13 @@ def get_service(db: Session = Depends(get_db)) -> ExportService:
 
 
 async def _run_export_background(export_id: uuid.UUID) -> None:
-    """Cria session própria para o background task — a session do request já foi fechada."""
+    # session propria — a sessao do request ja foi fechada ao chegar aqui
     db = SessionLocal()
     try:
         await ExportService(db).process(export_id)
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

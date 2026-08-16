@@ -1,5 +1,5 @@
 import uuid
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -22,7 +22,7 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(..., min_length=1)
 
 
 class AccessTokenResponse(BaseModel):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -37,6 +37,7 @@ async def login(request: Request, data: LoginRequest, db: Session = Depends(get_
 @router.post("/logout", status_code=204)
 async def logout(data: RefreshRequest, db: Session = Depends(get_db)):
     AuthService(db).logout(data.refresh_token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
