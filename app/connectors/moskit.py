@@ -65,3 +65,38 @@ class MoskitConnector(BaseConnector):
             "POST", f"{base_url}/v2/deals", headers=self._headers(), json=payload
         )
         return response.json()
+
+    async def create_contact(self, payload: dict) -> dict:
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
+        response = await self._request(
+            "POST", f"{base_url}/v2/contacts", headers=self._headers(), json=payload
+        )
+        return response.json()
+
+    async def create_company(self, payload: dict) -> dict:
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
+        response = await self._request(
+            "POST", f"{base_url}/v2/companies", headers=self._headers(), json=payload
+        )
+        return response.json()
+
+    async def search_contacts(self, payload: dict) -> dict:
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
+        response = await self._request(
+            "POST", f"{base_url}/v2/contacts/search", headers=self._headers(), json=payload
+        )
+        return response.json()
+
+    async def search_companies(self, payload: dict) -> dict:
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
+        response = await self._request(
+            "POST", f"{base_url}/v2/companies/search", headers=self._headers(), json=payload
+        )
+        return response.json()
+
+    async def search_deals(self, payload: dict) -> dict:
+        base_url = self.connection.base_url or settings.MOSKIT_API_BASE_URL
+        response = await self._request(
+            "POST", f"{base_url}/v2/deals/search", headers=self._headers(), json=payload
+        )
+        return response.json()
