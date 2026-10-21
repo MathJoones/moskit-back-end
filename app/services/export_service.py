@@ -266,7 +266,7 @@ class ExportService:
 
         records: list[dict] = []
         start = 0
-        page_size = 100  # Moskit retorna no máx ~10 por chamada mas aceita start como offset
+        page_size = 50 # Moskit retorna no máx 10 por chamada mas aceita start como offset
 
         allowed = ALLOWED_FILTER_PARAMS.get(entity_type, set())
         safe_filters = {k: v for k, v in filter_config.items() if k in allowed}

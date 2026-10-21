@@ -1,11 +1,3 @@
-"""
-Script para criar o primeiro usuário admin.
-
-Uso:
-    python seed_admin.py
-    python seed_admin.py --email admin@empresa.com --name "Admin" --password "MinhaSenh@123"
-"""
-
 import argparse
 import sys
 import uuid
