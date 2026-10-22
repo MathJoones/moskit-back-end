@@ -16,6 +16,8 @@ from app.controllers.auth_controller import router as auth_router
 from app.controllers.user_controller import router as user_router
 from app.controllers.connection_controller import router as connection_router
 from app.controllers.export_controller import router as export_router
+from app.controllers.field_mapping_controller import router as field_mapping_router
+from app.controllers.import_controller import router as import_router
 
 configure_logging(level=settings.APP_LOG_LEVEL)
 logger = structlog.get_logger()
@@ -107,10 +109,12 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 # Routers
 API_PREFIX = "/api/v1"
 
-app.include_router(auth_router,       prefix=f"{API_PREFIX}/auth",           tags=["Auth"])
-app.include_router(user_router,       prefix=f"{API_PREFIX}/users",          tags=["Users"])
-app.include_router(connection_router, prefix=f"{API_PREFIX}/connections", tags=["Connections"])
-app.include_router(export_router,     prefix=f"{API_PREFIX}/exports",     tags=["Exports"])
+app.include_router(auth_router,          prefix=f"{API_PREFIX}/auth",           tags=["Auth"])
+app.include_router(user_router,          prefix=f"{API_PREFIX}/users",          tags=["Users"])
+app.include_router(connection_router,    prefix=f"{API_PREFIX}/connections",    tags=["Connections"])
+app.include_router(export_router,        prefix=f"{API_PREFIX}/exports",        tags=["Exports"])
+app.include_router(field_mapping_router, prefix=f"{API_PREFIX}/field-mappings", tags=["Field Mappings"])
+app.include_router(import_router,        prefix=f"{API_PREFIX}/imports",        tags=["Imports"])
 
 
 @app.get("/health", tags=["Health"], include_in_schema=False)

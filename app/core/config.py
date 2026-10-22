@@ -43,7 +43,11 @@ class Settings(BaseSettings):
 
     # Storage
     STORAGE_TYPE: Literal["local", "s3"] = "local"
-    STORAGE_LOCAL_PATH: str = "exports" 
+    STORAGE_LOCAL_PATH: str = "exports"
+
+    # Celery
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
 
     # Moskit API
     MOSKIT_API_BASE_URL: str = "https://api.moskitcrm.com"
