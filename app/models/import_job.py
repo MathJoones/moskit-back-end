@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Enum as SAEnum, ForeignKey, Integer, Numeric, SmallInteger, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
@@ -29,11 +29,8 @@ class ImportJob(Base, TimestampMixin, SoftDeleteMixin):
         ForeignKey("api_connections.id", ondelete="SET NULL"),
         nullable=True,
     )
-    mapping_group_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("field_mapping_groups.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    column_mappings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    dedup_keys: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     input_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     input_file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     total_rows: Mapped[int | None] = mapped_column(Integer, nullable=True)

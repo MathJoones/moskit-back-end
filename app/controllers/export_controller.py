@@ -1,6 +1,8 @@
 import uuid
+from datetime import date, datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -32,12 +34,26 @@ async def _run_export_background(export_id: uuid.UUID) -> None:
 
 @router.get("", response_model=PaginatedResponse[ExportListResponse])
 def list_exports(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filtrar por status"),
+    entity_type: Optional[str] = Query(None, description="Filtrar por entidade"),
+    date_from: Optional[date] = Query(None, description="Data início (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Data fim (YYYY-MM-DD)"),
     current_user: User = Depends(get_current_user),
     service: ExportService = Depends(get_service),
 ):
-    return service.list_by_user(current_user.id, page=page, page_size=page_size)
+    dt_from = datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc) if date_from else None
+    dt_to = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=timezone.utc) if date_to else None
+    return service.list_by_user(
+        current_user.id,
+        page=page,
+        page_size=page_size,
+        status=status,
+        entity_type=entity_type,
+        date_from=dt_from,
+        date_to=dt_to,
+    )
 
 
 @router.post("", response_model=ExportResponse, status_code=202)

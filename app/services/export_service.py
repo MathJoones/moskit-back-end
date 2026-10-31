@@ -1,7 +1,6 @@
 # Orquestra criacao, processamento (background) e download de exports
 import csv
 import json
-import os
 import uuid
 from datetime import datetime, UTC
 from pathlib import Path
@@ -155,9 +154,26 @@ class ExportService:
         self.repo.create(export)
         return ExportResponse.model_validate(export)
 
-    def list_by_user(self, user_id: uuid.UUID, page: int = 1, page_size: int = 20) -> dict:
+    def list_by_user(
+        self,
+        user_id: uuid.UUID,
+        page: int = 1,
+        page_size: int = 20,
+        status: str | None = None,
+        entity_type: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict:
         skip = (page - 1) * page_size
-        items, total = self.repo.list_by_user(user_id, skip=skip, limit=page_size)
+        items, total = self.repo.list_by_user(
+            user_id,
+            skip=skip,
+            limit=page_size,
+            status=status,
+            entity_type=entity_type,
+            date_from=date_from,
+            date_to=date_to,
+        )
         return {
             "items": [ExportListResponse.model_validate(i) for i in items],
             "total": total,

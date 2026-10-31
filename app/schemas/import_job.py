@@ -11,11 +11,20 @@ ImportRowStatus = Literal["created", "duplicate", "error"]
 ResultFileType = Literal["created", "duplicate", "error"]
 
 
+class ColumnMapping(BaseModel):
+    csv_column: str
+    target_field: str
+    transformer: str | None = "string"
+    transformer_config: dict | None = None
+    is_required: bool = False
+
+
 class ImportCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     entity_type: EntityType
     connection_id: uuid.UUID
-    mapping_group_id: uuid.UUID
+    column_mappings: list[ColumnMapping] = Field(default_factory=list)
+    dedup_keys: list[str] | None = None
 
 
 class ImportRowResponse(BaseModel):
@@ -36,7 +45,8 @@ class ImportResponse(BaseModel):
     entity_type: EntityType
     status: ImportStatus
     connection_id: uuid.UUID | None
-    mapping_group_id: uuid.UUID | None
+    column_mappings: list[dict] | None
+    dedup_keys: list[str] | None
     input_file_name: str | None
     total_rows: int | None
     processed: int
@@ -79,5 +89,4 @@ class ImportPreviewRow(BaseModel):
 
 class ImportPreviewResponse(BaseModel):
     entity_type: EntityType
-    mapping_group_id: uuid.UUID
     rows: list[ImportPreviewRow]

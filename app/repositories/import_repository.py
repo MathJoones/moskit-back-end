@@ -17,11 +17,23 @@ class ImportRepository(BaseRepository[ImportJob]):
         user_id: uuid.UUID,
         skip: int = 0,
         limit: int = 20,
+        status: str | None = None,
+        entity_type: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> tuple[list[ImportJob], int]:
         query = self.db.query(ImportJob).filter(
             ImportJob.created_by == user_id,
             ImportJob.deleted_at.is_(None),
         )
+        if status:
+            query = query.filter(ImportJob.status == status)
+        if entity_type:
+            query = query.filter(ImportJob.entity_type == entity_type)
+        if date_from:
+            query = query.filter(ImportJob.created_at >= date_from)
+        if date_to:
+            query = query.filter(ImportJob.created_at <= date_to)
         total = query.with_entities(func.count(ImportJob.id)).scalar()
         items = query.order_by(ImportJob.created_at.desc()).offset(skip).limit(limit).all()
         return items, total or 0

@@ -1,14 +1,22 @@
 """
-MappingEngine — núcleo do processamento de importação.
+MappingEngine — nucleo do processamento de importacao.
 
-Recebe linha bruta do CSV + FieldMappingGroup, aplica transformers
-e validators, retorna dict pronto para a Moskit API.
-Lança MappingValidationError com campo e mensagem em caso de falha.
+Recebe linha bruta do CSV + lista de mapeamentos (column_mappings do ImportJob),
+aplica transformers e validators, retorna dict pronto para a Moskit API.
+Lanca MappingValidationError com campo e mensagem em caso de falha.
+
+Estrutura de cada item em column_mappings:
+  {
+    "csv_column":        str,        # coluna no CSV
+    "target_field":      str,        # campo no payload da Moskit API
+    "transformer":       str | null, # "string" | "number" | "date" | "phone" | "enum"
+    "transformer_config": dict | null,
+    "is_required":       bool        # default false
+  }
 """
 from dataclasses import dataclass
 
 from app.mappings.transformers import TRANSFORMER_REGISTRY
-from app.models.field_mapping_group import FieldMappingGroup
 
 
 @dataclass
@@ -21,59 +29,58 @@ class MappingValidationError(Exception):
 
 
 class MappingEngine:
-    def __init__(self, group: FieldMappingGroup):
-        self.group = group
-        self.mappings = group.mappings  # list[FieldMapping] carregado via relationship
+    def __init__(self, column_mappings: list[dict]):
+        self.column_mappings = column_mappings
 
     def process(self, raw_row: dict[str, str]) -> dict:
         """
         Processa uma linha bruta e retorna dict transformado.
-        Lança MappingValidationError se campo obrigatório ausente
+        Lanca MappingValidationError se campo obrigatorio ausente
         ou transformer falhar.
         """
         result: dict = {}
 
-        for mapping in self.mappings:
-            raw_value = raw_row.get(mapping.source_column)
+        for mapping in self.column_mappings:
+            csv_col: str = mapping.get("csv_column", "")
+            target_field: str = mapping.get("target_field", "")
+            transformer_type: str = mapping.get("transformer") or "string"
+            transformer_config: dict | None = mapping.get("transformer_config")
+            is_required: bool = mapping.get("is_required", False)
 
-            # Campo obrigatório ausente ou vazio
+            raw_value = raw_row.get(csv_col)
+
             if not raw_value or not str(raw_value).strip():
-                if mapping.is_required:
+                if is_required:
                     raise MappingValidationError(
-                        field=mapping.source_column,
-                        message=f"Campo obrigatorio '{mapping.source_column}' ausente ou vazio",
+                        field=csv_col,
+                        message=f"Campo obrigatorio '{csv_col}' ausente ou vazio",
                     )
-                # Opcional ausente — ignora
                 continue
 
-            transformer = TRANSFORMER_REGISTRY.get(mapping.transformer_type)
+            transformer = TRANSFORMER_REGISTRY.get(transformer_type)
             if transformer is None:
                 raise MappingValidationError(
-                    field=mapping.source_column,
-                    message=f"Transformer desconhecido: '{mapping.transformer_type}'",
+                    field=csv_col,
+                    message=f"Transformer desconhecido: '{transformer_type}'",
                 )
 
             try:
-                transformed = transformer.transform(
-                    str(raw_value), mapping.transformer_config
-                )
+                transformed = transformer.transform(str(raw_value), transformer_config)
             except ValueError as exc:
                 raise MappingValidationError(
-                    field=mapping.source_column,
+                    field=csv_col,
                     message=str(exc),
                 ) from exc
 
-            result[mapping.target_field] = transformed
+            result[target_field] = transformed
 
         return result
 
-    def process_preview(
-        self, rows: list[dict[str, str]]
-    ) -> list[dict]:
+    def process_preview(self, rows: list[dict[str, str]]) -> list[dict]:
         """
         Processa lista de linhas (preview das primeiras N).
         Retorna lista de dicts com raw, transformed e error por linha.
-        Nunca lança — captura erros por linha individualmente.
+        Nunca lanca — captura erros por linha individualmente.
         """
         preview = []
         for i, raw_row in enumerate(rows, start=1):

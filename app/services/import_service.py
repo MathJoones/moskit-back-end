@@ -1,6 +1,6 @@
 """
-ImportService — orquestra upload, parse, preview, criação do job e CSVs de resultado.
-O despacho do Celery task fica no controller (mesmo padrão do ExportService).
+ImportService — orquestra upload, parse, preview, criacao do job e CSVs de resultado.
+O despacho do Celery task fica no controller (mesmo padrao do ExportService).
 """
 import csv
 import io
@@ -17,7 +17,6 @@ from app.mappings.engine import MappingEngine
 from app.models.import_job import ImportJob
 from app.repositories.audit_repository import AuditLogRepository
 from app.repositories.connection_repository import ConnectionRepository
-from app.repositories.field_mapping_repository import FieldMappingGroupRepository
 from app.repositories.import_repository import ImportRepository
 from app.repositories.import_row_repository import ImportRowRepository
 from app.schemas.import_job import (
@@ -52,7 +51,6 @@ def _parse_file(file_bytes: bytes, filename: str) -> list[dict[str, str]]:
         df = df.fillna("")
         return df.to_dict(orient="records")
 
-    # CSV — tenta detectar delimitador automaticamente
     text = file_bytes.decode("utf-8-sig", errors="replace")
     dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
@@ -65,10 +63,9 @@ class ImportService:
         self.repo = ImportRepository(db)
         self.row_repo = ImportRowRepository(db)
         self.conn_repo = ConnectionRepository(db)
-        self.group_repo = FieldMappingGroupRepository(db)
         self.audit = AuditLogRepository(db)
 
-    # ── Criação ──────────────────────────────────────────────────────────────
+    # ── Criacao ──────────────────────────────────────────────────────────────
 
     def create(
         self,
@@ -85,33 +82,21 @@ class ImportService:
         if not connection or not connection.is_active:
             raise NotFoundError("ApiConnection", str(payload.connection_id))
 
-        group = self.group_repo.get_active(payload.mapping_group_id)
-        if not group:
-            raise NotFoundError("FieldMappingGroup", str(payload.mapping_group_id))
-
-        if group.entity_type != payload.entity_type:
-            raise AppException(
-                error_code="ENTITY_TYPE_MISMATCH",
-                detail=(
-                    f"FieldMappingGroup configurado para '{group.entity_type}', "
-                    f"mas importação solicitada para '{payload.entity_type}'"
-                ),
-            )
-
-        # Salva arquivo em disco
         upload_path = _upload_dir() / f"import_{uuid.uuid4()}_{filename}"
         upload_path.write_bytes(file_bytes)
 
-        # Conta linhas para total_rows
         rows = _parse_file(file_bytes, filename)
         total_rows = len(rows)
+
+        column_mappings = [m.model_dump() for m in payload.column_mappings]
 
         job = ImportJob(
             name=payload.name,
             entity_type=payload.entity_type,
             status="pending",
             connection_id=payload.connection_id,
-            mapping_group_id=payload.mapping_group_id,
+            column_mappings=column_mappings,
+            dedup_keys=payload.dedup_keys,
             input_file_path=str(upload_path),
             input_file_name=filename,
             total_rows=total_rows,
@@ -136,10 +121,25 @@ class ImportService:
     # ── Listagem / Detalhe ───────────────────────────────────────────────────
 
     def list_by_user(
-        self, user_id: uuid.UUID, page: int = 1, page_size: int = 20
+        self,
+        user_id: uuid.UUID,
+        page: int = 1,
+        page_size: int = 20,
+        status: str | None = None,
+        entity_type: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> dict:
         skip = (page - 1) * page_size
-        items, total = self.repo.list_by_user(user_id, skip=skip, limit=page_size)
+        items, total = self.repo.list_by_user(
+            user_id,
+            skip=skip,
+            limit=page_size,
+            status=status,
+            entity_type=entity_type,
+            date_from=date_from,
+            date_to=date_to,
+        )
         return {
             "items": [ImportListResponse.model_validate(i) for i in items],
             "total": total,
@@ -156,9 +156,7 @@ class ImportService:
 
     # ── Preview ──────────────────────────────────────────────────────────────
 
-    def preview(
-        self, import_id: uuid.UUID, user_id: uuid.UUID
-    ) -> ImportPreviewResponse:
+    def preview(self, import_id: uuid.UUID, user_id: uuid.UUID) -> ImportPreviewResponse:
         job = self.repo.get_active(import_id)
         if not job or job.created_by != user_id:
             raise NotFoundError("Import", str(import_id))
@@ -166,23 +164,18 @@ class ImportService:
         if not job.input_file_path or not Path(job.input_file_path).exists():
             raise AppException(
                 error_code="FILE_NOT_FOUND",
-                detail="Arquivo de importação não encontrado no servidor",
+                detail="Arquivo de importacao nao encontrado no servidor",
             )
-
-        group = self.group_repo.get_active(job.mapping_group_id)
-        if not group:
-            raise NotFoundError("FieldMappingGroup", str(job.mapping_group_id))
 
         file_bytes = Path(job.input_file_path).read_bytes()
         rows = _parse_file(file_bytes, job.input_file_name or "file.csv")
         sample = rows[:PREVIEW_ROWS]
 
-        engine = MappingEngine(group)
+        engine = MappingEngine(job.column_mappings or [])
         results = engine.process_preview(sample)
 
         return ImportPreviewResponse(
             entity_type=job.entity_type,
-            mapping_group_id=job.mapping_group_id,
             rows=[
                 ImportPreviewRow(
                     row_number=r["row_number"],
@@ -204,22 +197,17 @@ class ImportService:
         if job.status in ("completed", "cancelled", "error"):
             raise AppException(
                 error_code="IMPORT_ALREADY_FINISHED",
-                detail=f"Import já finalizado com status '{job.status}'",
+                detail=f"Import ja finalizado com status '{job.status}'",
             )
 
-        # Revoga task Celery se existir
         if job.celery_task_id:
             try:
-                from app.worker import celery_app  # import lazy — evita circular antes etapa 7
+                from app.worker import celery_app
                 celery_app.control.revoke(job.celery_task_id, terminate=True)
             except Exception:
-                pass  # Celery pode não estar disponível em testes
+                pass
 
-        self.repo.update_status(
-            import_id,
-            "cancelled",
-            completed_at=datetime.now(UTC),
-        )
+        self.repo.update_status(import_id, "cancelled", completed_at=datetime.now(UTC))
         self.audit.log(
             action="update",
             user_id=user_id,
@@ -235,16 +223,12 @@ class ImportService:
         self,
         import_id: uuid.UUID,
         user_id: uuid.UUID,
-        result_type: str,  # "created" | "duplicate" | "error"
+        result_type: str,
     ) -> str:
-        """
-        Gera (ou recupera) CSV de resultado por status.
-        Retorna path absoluto do arquivo.
-        """
         if result_type not in RESULT_STATUSES:
             raise AppException(
                 error_code="INVALID_RESULT_TYPE",
-                detail=f"Tipo inválido: '{result_type}'. Use: {RESULT_STATUSES}",
+                detail=f"Tipo invalido: '{result_type}'. Use: {RESULT_STATUSES}",
             )
 
         job = self.repo.get_active(import_id)
@@ -254,12 +238,11 @@ class ImportService:
         if job.status not in ("completed", "cancelled"):
             raise AppException(
                 error_code="IMPORT_NOT_READY",
-                detail="Import ainda não finalizado",
+                detail="Import ainda nao finalizado",
             )
 
         result_path = _result_dir() / f"import_{import_id}_{result_type}.csv"
 
-        # Regera sempre — garante dados atualizados mesmo em cancelamento parcial
         rows, _ = self.row_repo.list_by_import(
             import_id, skip=0, limit=100_000, status=result_type
         )
