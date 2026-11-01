@@ -1,4 +1,5 @@
 import json
+import threading
 import uuid
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
@@ -93,8 +94,15 @@ async def create_import(
     )
     job = service.create(payload, file_bytes, file.filename or "import.csv", current_user.id)
 
-    task = process_import.delay(str(job.id))
-    service.repo.update_status(job.id, "pending", celery_task_id=task.id)
+    try:
+        task = process_import.delay(str(job.id))
+        service.repo.update_status(job.id, "pending", celery_task_id=task.id)
+    except Exception:
+        threading.Thread(
+            target=process_import,
+            args=(str(job.id),),
+            daemon=True,
+        ).start()
 
     return ImportResponse.model_validate(job)
 
