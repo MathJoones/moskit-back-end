@@ -44,8 +44,11 @@ class ExportListResponse(BaseModel):
     entity_type: EntityType
     status: ExportStatus
     output_format: ExportFormat
+    output_file_name: str | None
     total_records: int | None
     error_message: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

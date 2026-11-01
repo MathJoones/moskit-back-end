@@ -79,7 +79,13 @@ class AuthService:
         user = self.user_repo.get_by_email(data.email)
 
         if not user:
-            raise UnauthorizedError()
+            from app.core.exceptions import AppException
+            from fastapi import status as http_status
+            raise AppException(
+                error_code="EMAIL_NOT_FOUND",
+                detail="E-mail nao cadastrado no sistema.",
+                status_code=http_status.HTTP_401_UNAUTHORIZED,
+            )
 
         if user.locked_until and user.locked_until > datetime.now(timezone.utc):
             raise AccountLockedError()
@@ -91,7 +97,11 @@ class AuthService:
                     minutes=settings.ACCOUNT_LOCKOUT_MINUTES
                 )
                 self.user_repo.update(user)
-            raise UnauthorizedError()
+            raise AppException(
+                error_code="WRONG_CREDENTIALS",
+                detail="Senha incorreta.",
+                status_code=http_status.HTTP_401_UNAUTHORIZED,
+            )
 
         self.user_repo.reset_failed_attempts(user)
         user.last_login_at = datetime.now(timezone.utc)

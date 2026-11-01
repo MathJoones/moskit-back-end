@@ -69,12 +69,15 @@ class ImportListResponse(BaseModel):
     name: str
     entity_type: EntityType
     status: ImportStatus
+    input_file_name: str | None
     total_rows: int | None
     processed: int
     created: int
     duplicates: int
     errors: int
     progress_pct: float
+    started_at: datetime | None
+    completed_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
